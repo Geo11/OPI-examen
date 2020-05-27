@@ -1,0 +1,144 @@
+---
+title: "B1.QQP"
+author: "Geovanni Becerril"
+date: "5/26/2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+# Análisis de base "Quién es Quién en los Precios"
+
+## 1. Procesamiento de datos
+
+Se leen los datos utilizando Spark SQL:
+
+```{r, warning=FALSE, message=FALSE}
+#install.packages("sparklyr")
+
+rm(list = ls())
+
+# Cargamos las librerías a utilizar
+library(sparklyr)
+library(dplyr)
+library(knitr)
+library(ggplot2)
+
+spark_install(version = "2.1.0")
+
+Sys.setenv(JAVA_HOME="C:/Program Files/Java/jdk1.7.0_80")
+
+sc <- spark_connect(master = "local")
+
+### Leemos la base de datos
+db_profeco <- spark_read_csv(sc, path =  "D://Documents/Gio/OPI/profeco/all_data.csv", infer_schema=FALSE)
+```
+
+Para responder las preguntas en la parte 1, utilizaos el siguiente código. La respuesta a las pregunas se presenta inmediato al código:
+
+```{r, warning=FALSE, message=FALSE}
+#a. Número de registros
+n_registros = db_profeco %>% sdf_nrow()
+
+#b. Número de categorías
+n_categorias = db_profeco %>% group_by(categoria) %>% summarise(count=n()) %>% filter(!is.na(categoria)) %>% sdf_nrow()
+
+### c. No. Cadenas
+n_cadenas = db_profeco %>% group_by(cadenaComercial) %>% summarise(count=n()) %>% filter(!is.na(cadenaComercial)) %>% sdf_nrow()
+
+### e. Productos por entidad
+productos = db_profeco %>% group_by(estado, producto) %>% filter(!is.na(producto)) %>% summarise(count=n())
+productos = productos %>% group_by(estado) %>% filter(count==max(count,na.rm = T))
+df_productos = collect(productos)
+### Eliminamos los registros que no son entidades
+df_productos = df_productos[!(df_productos$estado %in% c("estado"," COL. EDUARDO GUERRA"," ESQ. SUR 125\"",NA)),-3]
+names(df_productos)=c("Estado","Producto")
+
+### f. Cadena con mayor número de productos
+cadenas = db_profeco %>% group_by(cadenaComercial,producto) %>% summarise(count=n())
+cadena_max = cadenas %>% group_by(cadenaComercial) %>% summarise(count=n()) %>% filter(count==max(count))
+```
+
+a) ¿Cuántos registros hay? 
+
+Hay 62,540,715 registros y 15 columnas, de los cuales 937,139 registros tienen al menos una variable con valor NA
+
+b) ¿Cuántas categorías? 
+
+41 (una categoría se descartó por tener valor NA)
+
+c) ¿Cuántas cadenas comerciales están siendo monitoreadas? 
+
+705 (una cadena se descartó por tener valor NA)
+
+d) ¿Cómo podrías determinar la calidad de los datos? ¿Detectaste algún tipo de
+inconsistencia o error en la fuente? 
+
+Un aspecto inmediato para determiar la calidad de datos es saber la proporción de valores perdidos o NA, y hay 937,139 registros con al menos un valor NA. Por otra parte, existen algunas otras inconsistencias en cuanto a las variables categóricas, como ejemplo los estados, al tener registros con valores no correspondientes a los 32 estados.
+
+e) ¿Cuáles son los productos más monitoreados en cada entidad?
+
+La tabla siguiente muestra los productos más monitoreados en cada entidad:
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+kable(df_productos[order(df_productos$Estado),])
+```
+
+f) ¿Cuál es la cadena comercial con mayor variedad de productos monitoreados?
+
+La cadena comercial con mayor variedad de productos es Soriana, que tienen 1059 datos.
+
+## 2. Análisis exploratorio
+
+a) Genera una canasta de productos básicos que te permita comparar los precios geográfica y temporalmente. Justifica tu elección y procedimiento
+
+Para generar la canasta, debemos enfocar nuestra atención en aquellos productos relevantes, y consideraremos relevantes para este punto a los productos que tengan mayor monitoreo en la base de datos. Elegiremos a los 10 más relevantes para construir la canasta, y con ello, construiremos un nuevo conjunto en el cual miraremos tres variables: producto, precio, estado, municipio y fecha de registro.
+
+```{r, warning=FALSE, message=FALSE}
+productos_max = db_profeco %>% group_by(producto) %>% filter(!is.na(producto)) %>% summarise(count=n()) %>% arrange(desc(count))
+productos_max = collect(productos_max)
+## Nos quedamos con los diez productos con mayor monitoreo
+productos10 = productos_max$producto[1:10]
+## Construimos la base de datos con las variables de interés y los productos elegidos
+db_prod10 = db_profeco %>% select(producto, precio, estado, municipio, fechaRegistro) %>% filter(producto %in% productos10)
+```
+
+b) ¿Cuál es la ciudad más cara del país?¿Cuál es la más barata?
+
+Para poder comparar  los precios de las ciudades (municipios) del país, utilizaremos el precio promedio de los productos, bajo el supuesto de que cada ciudad tiene oferta de los 10 productos más monitoreados. Con ello, el comparar el precio promedio puede representar un punto de referencia para comparar las ciudades. 
+
+```{r, warning=FALSE, message=FALSE}
+### Cambiamos la clase de la variable precio a numérico y eliminamos espacios en blanco adicionales en la variable municipio
+db_prod10 = db_prod10 %>% mutate(precio = as.numeric(precio), municipio = trimws(x = municipio,which = "right"))
+
+### Uniformizamos los nombres de municipios que difieren por acentos
+db_prod10 = db_prod10 %>% mutate(municipio = regexp_replace(municipio, "[Á]", "A"))
+db_prod10 = db_prod10 %>% mutate(municipio = regexp_replace(municipio, "[É]", "E"))
+db_prod10 = db_prod10 %>% mutate(municipio = regexp_replace(municipio, "[Í]", "I"))
+db_prod10 = db_prod10 %>% mutate(municipio = regexp_replace(municipio, "[Ó]", "O"))
+db_prod10 = db_prod10 %>% mutate(municipio = regexp_replace(municipio, "[Ú]", "U"))
+db_prod10 = db_prod10 %>% mutate(municipio = ifelse(municipio %in% c("ATIZAPÁN","ATIZAPAN DE ZARAGOZA","ATIZAPÁN DE ZARAGOZA"),"ATIZAPAN",municipio))
+db_prod10 = db_prod10 %>% mutate(municipio = ifelse(municipio %in% c("BENITO JUAREZ","BENITO JUÁREZ","BENITO JUÁREZ"),"BENITO JUAREZ",municipio))
+
+### Obtenemos precios promedio por municipio
+productos_mun = db_prod10 %>% group_by(estado, municipio) %>% summarise(precio_prom=mean(precio,na.rm = T)) %>% arrange(desc(precio_prom))
+prod_mun = collect(productos_mun)
+
+mun_max = prod_mun[prod_mun$precio_prom==max(prod_mun$precio_prom),]
+mun_min = prod_mun[prod_mun$precio_prom==min(prod_mun$precio_prom),]
+```
+
+De esta forma, es posible obtener los municipios con los precios promedio máximo y mínimo. Así, concluimos que el municipio con el precio promedio más alto es Carmen, en Campeche, y el municipio con el precio promedio más bajo es Tlajomulco de Zuñiga en Jalisco.
+
+d. ¿Cuál es el estado más caro y en qué mes?
+
+Para identificar el estado más caro, realizamos un procedimiento similar al utilizado para considerar a las ciudades más caras y baratas, con la diferencia que el precio promedio en este caso, se obtendrá por estado y por fecha. Bajo este razonamiento, es el estado de Oaxaca el que presenta el precio promedio más alto, en el mes de noviembre de 2015. El código siguiente fue el utilizado para obtener este resultado.
+
+```{r, warning=FALSE, message=FALSE}
+productos_est = db_prod10 %>% group_by(estado, fechaRegistro) %>% summarise(precio_prom=mean(precio,na.rm = T)) %>% arrange(desc(precio_prom))
+prod_est = collect(productos_est)
+est_max = prod_est[prod_est$precio_prom==max(prod_est$precio_prom),]
+
+spark_disconnect(sc)
+```
+

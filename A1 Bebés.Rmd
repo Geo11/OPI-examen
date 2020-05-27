@@ -1,0 +1,78 @@
+---
+title: "A.1 Bebés"
+author: "Geovanni Becerril"
+date: "5/27/2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+# Estimación del número de niños de 0 a 6 meses de edad en 2020
+
+1. Para cada AGEB del Municipio de Toluca, estima cuántos bebés de 0 a 6 meses de edad habitan ahí el día de hoy. Explica tu razonamiento en menos de 300 palabras. Enlista tus fuentes y presenta los resultados. (Hint: revisa el CPV 2010, y el Inventario Nacional de Vivienda 2016). Puedes usar cualquier otra fuente que consideres relevantes.
+
+Utilizaremos los resultados por AGEB que proporciona INEGI, disponibles en: https://www.inegi.org.mx/programas/ccpv/2010/default.html#Datos_abiertos, además de las proyecciones que realiza el Consejo Nacional de Población (CONAPO) de la población en municipios a partir de 2015 a 2030, disponibles en: https://datos.gob.mx/busca/dataset/proyecciones-de-la-poblacion-de-mexico-y-de-las-entidades-federativas-2016-2050. 
+
+```{r, warning=FALSE, message=FALSE}
+rm(list = ls())
+
+library(dplyr)
+library(knitr)
+
+## Leemos base de datos de INEGI
+cpv=read.csv("D:/Documents/Gio/OPI/INEGI/resultados_ageb_urbana_15_cpv2010/conjunto_de_datos/resultados_ageb_urbana_15_cpv2010.csv",na.strings = c("*", "N/D"))
+cpv_tol=cpv[cpv$nom_mun=="Toluca" & cpv$nom_loc=="Total AGEB urbana",c(7,9,12)]
+
+## Leemos base de datos de CONAPO
+conapo=read.csv("D:/Documents/Gio/OPI/INEGI/base_municipios_final_datos_01.csv")
+conapo_tol=conapo[conapo$MUN=="Toluca" & conapo$AÑO==2020,]
+```
+
+## Descripción de bases de datos
+
+La base de datos contiene el número de personas por AGEB para cada municipio del país. En nuestro caso, nuestro interés se centra en la población del municipio de Toluca, en el Estado de México. De acuerdo a la base de datos de 2010, se tienen identificadas 256 AGEB, y que concentraban en 2010 a 758,370 habitantes, de los 819,561 habitantes del municipio de acuerdo con datos del Censo de Población y Vivienda de 2010.
+
+Por otra parte, la base de datos de CONAPO contiene una proyección del total de población municipal (por quinquenio de edad) hasta el año 2030. Estima que para el año 2020, la población en el municipio de Toluca sea de 948,950 habitantes.
+
+## Supuestos
+
+Para poder estimar la población de 0 a 6 meses debemos partir de los siguientes supuestos:
+
+1. Para estimar la población de 0 a 6 meses en 2010 (y posteriormente de 2020), consideraremos que la distribución de las edades es proporcional en individuos en una categoría de edad dada, es decir, la población de 0 a 6 meses de edad, será el 25\% de la población entre 0 y 2 años de edad reportada en 2010.
+2. La tasa de habitantes que habitan las AGEB es constante en el tiempo, es decir, la proporción de personas que se concentran en las AGEB en 2010 es la misma que en 2020.
+3. La proporción de habitantes de una AGEB respecto a las otras es constante en el tiempo, por lo cual la proporción de habitantes en cada AGEB en 2010, será el mismo que en 2020.
+
+## Idea de la estimación
+
+Atendiendo los supuestos anteriores, la estimación de la población entre 0 y 6 meses de edad (p06) se realizó de la siguiente manera:
+
+1. Estimación de la proporción de bebés de 0 a 6 meses por AGEB en 2010. De acuerdo con el supuesto 1, la p06 en 2010 es el 25\% de la población de 0 a 2 años de edad presentada en el censo. De esta forma obtenemos la p06 para cada AGEB en 2010. Luego, utilizando este valor se obtuvo la proporción de la p06 para cada AGEB respecto a la p06 total.
+2. Estimación de la p06 en 2020. Utilizando el supuesto 1, la p06 para 2020, será el 10\% de la población proyectada por CONAPO menor a 5 años, es decir, hay 7,646 bebés de 0 a 6 meses de edad en 2020.   
+3. Cálculo de la proporción de habitantes de las AGEB en 2010. Dividimos 758,370 entre 819,561 para obtener que el 92.53\% de la población en 2010 habitaba alguna AGEB.
+4. Estimación del total de población de 0 a 6 meses que habitan alguna AGEB en 2020. Basándonos en el supuesto 2, y utilizando el ersultado del punto 2, y la proporción obtenida en el punto 3, estimamos que 7,075 bebés de 0 a 6 meses habitan una AGEB en 2020.
+5. Estimación de la p06 por AGEB para 2020. Utilizando las proporciones obtenidas en el punto 1, y basándonos en el supuesto 3 establecido anteriormente, obtenemos la p06 para cada AGEB multiplicando la población obtenida en el punto 4, por las proporciones de cada AGEB. De esta forma, obtenemos una estimación del número de bebés en cada AGEB para el año 2020.
+
+```{r}
+# Estimación de la p06 por AGEB
+cpv_tol$p_0a6m_2010=round(cpv_tol$p_0a2*0.25)
+# Estimación de la proporción de la p06 en cada AGEB, respecto a las demás
+cpv_tol$prop=cpv_tol$p_0a6m_2010/sum(cpv_tol$p_0a6m_2010,na.rm = T)
+# Estimación de la p06 en 2020
+p06_2020=round(sum(conapo_tol$POB[1:2])*0.10)
+# Cálculo de la proporción habitantes que habitan una AGEB en 2010
+prop_ageb=758370/819561
+# Estimación de habitantes de 0 a 6 meses que habitan alguna AGEB en 2020
+hab_06m_2020=round(p06_2020*prop_ageb)
+# Estimación de la p06 para cada AGEB
+cpv_tol$p_0a6m_2020=round(hab_06m_2020*cpv_tol$prop)
+```
+
+La tabla que se muestra a continuación contiene la estimación de la población de 0 a 6 meses de edad para cada AGE del municipio de Toluca. Es de resalar, que si bien parece que de 2010 a 2020 la población de 0 a 6 meses disminuye en las AGEBs, esto se debe principalmente a que la población proyectada por CONAPO menor a 5 años, es también menor que la publicada por el CPV de 2010. 
+
+```{r, echo=F}
+pob06=cpv_tol[,c("ageb","p_0a6m_2010","p_0a6m_2020")]
+names(pob06)=c("AGEB","Pob_0a6m_2010","Pob_0a6m_2020")
+write.csv(pob06,"D:/Documents/Gio/OPI/INEGI/estimacion_pob06_2020.csv")
+kable(pob06)
+```
+

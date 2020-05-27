@@ -1,0 +1,64 @@
+---
+title: "BOPS"
+author: "Geovanni Becerril"
+date: "5/27/2020"
+output: html_document
+---
+
+# Caso BOPS
+
+```{r}
+rm(list = ls())
+db_online=read.csv("D:/Documents/Gio/OPI/BOPS_case/BOPS_case/bops_online.csv")
+db_bm=read.csv("D:/Documents/Gio/OPI/BOPS_case/BOPS_case/bops_bm.csv")
+```
+
+Dado que la tarea es identificar el efecto de la implementación de la estrategia BOPS, una alternativa a considerar es una prueba de medias, en la cual se puedan comparar las ventas tanto antes de la metodología como después. Esta metodología podemos aplicarla tanto para las ventas online como las B&M. Dado que no existe normalidad en los datos a probar, utilizaremos la prueba no paramétrica Wilcoxon
+
+```{r}
+## Realizamos la prueba para ventas online
+m1=db_online$sales[db_online$after==0]
+m2=db_online$sales[db_online$after==1]
+prueba_online = wilcox.test(m1,m2,alternative = "greater")
+
+## Realizamos la prueba para ventas B&M
+m1=db_bm$sales[db_online$after==0]
+m2=db_bm$sales[db_online$after==1]
+prueba_bm = wilcox.test(m1,m2,alternative = "less")
+
+## Calculamos la diferencia en el volumen de ventas
+vol_online = sum(db_online$sales[db_online$after==0])-sum(db_online$sales[db_online$after==1])
+```
+
+En la prueba online, se obtiene un p-value cercano a 0, por lo cual tenemos evidencia para rechazar la hipótesis nula, y concluimos que las ventas son significativamente mayores cuando la estrategia BOPS aún no se implementaba. 
+
+Cuando realizamos el mismo procedimiento con las ventas B&M, obtenemos un p-value de 0.6144 cuando la hipótesis alternativa es que las ventas antes de BOPS sean mayores, y 0.3856 cuando la hipótesis alternativa es que las ventas son menores. Lo anterior nos da evidencias para no rechazar la igualdad en las medias. Esto nos lleva a pensar que la estrategia BOPS no repercute en el funcionamiento de las ventas en este formato, sin embargo tampoco lo beneficia.
+
+Es de interés revisar también el efecto de la ubicación de las tiendas sobre las ventas, para lo cual construimos una prueba de medias también, para probar las ventas promedio cuando se las tiendas están en Canada o en US.
+
+```{r}
+# Ventas B&M
+us=db_bm$sales[db_bm$usa==1]
+can=db_bm$sales[db_bm$usa==0]
+
+prueba_us = wilcox.test(us,can, alternative = "less")
+```
+
+Cuando consideramos como hipótesis alternativa el escenario donde las ventas promedio son mayores en Estados Unidos se obtiene un p-value de 0.0655, lo cual si bien no es tan pequeño como se quisiera (menor a 0.01 por ejemplo) para descartar la hipótesis de igualdad de medias, si da un panorama sobre el nivel de ventas en Estados Unidos respecto a Canadá.
+
+Ahora, revisemos nuevamente la prueba, considerando ahora el escenario posterior al BOPS:
+
+```{r}
+# Ventas B&M
+us=db_bm$sales[db_bm$usa==1 & db_bm$after==1]
+can=db_bm$sales[db_bm$usa==0 & db_bm$after==1]
+
+prueba_us = wilcox.test(us,can, alternative = "greater")
+```
+
+Bajo este escenario, el p-value es menor, lo cual puede considerarse evidencia de que implementar el BOPS sigue causando problemas en cuanto a las ventas. Si bien el p-value tampoco es determinantemente bajo, existe evidencia para rechazar la prueba con un 5\% de confianza, lo cual en muchos casos es suficiente.
+
+Por tanto, dados los resultados se puede considerar que al menos con la información que se tiene, no es determinante para descartar la idea de expandirse a Canadá, sin embargo, de seguir implementando la estrategia BOPS, el expandirse a Canadá puede no ser lo mejor.
+
+Por último, respondamos acerca del volumen de ganancias a partir la implementación de la estrategia BOPS. Para ello, y como vimos anteriormente, el implementar la metodología disminuyó significativamente el promedio de ventas online. Por lo tanto podemos considerar que existe una pérdida en el volumen de ganancias, y esta es de 13,613,629 dólares brutos para ventas en línea. Para las ventas B&M no consideramos haya una pérdida o ganancia, pues la prueba de hipótesis no considera exista una diferencia significativa entre el antes y después de implementar la metodología BOPS.
+
